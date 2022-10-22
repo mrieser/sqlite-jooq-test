@@ -1,0 +1,253 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<groupId>ch.mrieser</groupId>
+	<artifactId>sqlite-jooq-test</artifactId>
+	<version>0.0.1-SNAPSHOT</version>
+
+	<name>Test of SQLite with Hikari and jooq</name>
+	<description>Foo Bar</description>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.junit.jupiter</groupId>
+				<artifactId>junit-jupiter-engine</artifactId>
+				<version>${junit.version}</version>
+				<scope>test</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.junit.jupiter</groupId>
+				<artifactId>junit-jupiter</artifactId>
+				<version>${junit.version}</version>
+				<scope>test</scope>
+			</dependency>
+			<dependency>
+			  <groupId>org.junit.jupiter</groupId>
+			  <artifactId>junit-jupiter-api</artifactId>
+			  <version>${junit.version}</version>
+			  <scope>test</scope>
+			</dependency>
+			<dependency>
+				<groupId>org.testcontainers</groupId>
+				<artifactId>testcontainers-bom</artifactId>
+				<version>1.17.3</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+	<build>
+		<plugins>
+			<plugin> <!-- we need to create /target/flyway/ manually, as sqlite will not create missing directories -->
+				<artifactId>maven-antrun-plugin</artifactId>
+				<version>3.1.0</version>
+				<executions>
+					<execution>
+						<id>generate-sources</id>
+						<phase>generate-sources</phase>
+						<configuration>
+							<target>
+								<mkdir dir="${project.basedir}/target/flyway/" />
+							</target>
+						</configuration>
+						<goals>
+							<goal>run</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.flywaydb</groupId>
+				<artifactId>flyway-maven-plugin</artifactId>
+				<version>${org.flywaydb.version}</version>
+
+				<executions>
+					<execution>
+						<id>flyway-generate-scenario</id>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>migrate</goal>
+						</goals>
+						<configuration>
+							<url>${db.scenario.url}</url>
+							<locations>
+								<location>filesystem:src/main/resources/migrations/</location>
+							</locations>
+							<placeholders>
+								<identityColumnType>INTEGER PRIMARY KEY</identityColumnType>
+							</placeholders>
+						</configuration>
+					</execution>
+				</executions>
+
+			</plugin>
+
+			<plugin>
+				<groupId>org.jooq</groupId>
+				<artifactId>jooq-codegen-maven</artifactId>
+				<version>${org.jooq.version}</version>
+
+				<executions>
+					<execution>
+						<id>jooq-codegen-scenario</id>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>generate</goal>
+						</goals>
+						<configuration>
+							<jdbc>
+								<driver>org.sqlite.JDBC</driver>
+								<url>${db.scenario.url}</url>
+							</jdbc>
+
+							<generator>
+								<target>
+									<!-- The destination package of your generated classes (within the destination directory) -->
+									<packageName>jooq</packageName>
+
+									<!-- The destination directory of your generated classes. Using Maven directory layout here -->
+									<directory>target/generated-sources/jooq/</directory>
+								</target>
+							</generator>
+						</configuration>
+					</execution>
+				</executions>
+
+				<dependencies>
+					<dependency>
+						<groupId>org.xerial</groupId>
+						<artifactId>sqlite-jdbc</artifactId>
+						<version>${org.sqlite.version}</version>
+					</dependency>
+					<dependency>
+						<groupId>org.postgresql</groupId>
+						<artifactId>postgresql</artifactId>
+						<version>${org.postgresql.version}</version>
+					</dependency>
+				</dependencies>
+
+				<configuration>
+					<generator>
+						<name>org.jooq.codegen.JavaGenerator</name>
+
+						<database>
+							<name>org.jooq.meta.sqlite.SQLiteDatabase</name>
+							<includes>.*</includes>
+							<excludes>flyway_schema_history</excludes>
+
+							<forcedTypes>
+								<!-- sqlite requires `INTEGER PRIMARY KEY` for auto-generated ids, but jooq converts them to Integer instead of Long.
+									 `BIGINT PRIMARY KEY` does not work in sqlite, so we have to tell jooq to convert those `INTEGER` to `BIGINT`.
+									 See https://stackoverflow.com/questions/26308248/sqlite-64bit-integers-recognized-as-ints-in-jooq -->
+								<forcedType>
+									<name>BIGINT</name>
+									<includeExpression>.*\.ID</includeExpression>
+									<includeTypes>.*</includeTypes>
+								</forcedType>
+							</forcedTypes>
+
+						</database>
+					</generator>
+				</configuration>
+			</plugin>
+
+			<plugin>
+				<!-- a hint for IDE's to add the java sources to the classpath -->
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>build-helper-maven-plugin</artifactId>
+				<version>3.3.0</version>
+				<executions>
+					<execution>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>add-source</goal>
+						</goals>
+						<configuration>
+							<sources>
+								<source>${project.build.directory}/generated-sources/jooq/</source>
+							</sources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
+
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.0.0-M7</version>
+			</plugin>
+		</plugins>
+	</build>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.flywaydb</groupId>
+			<artifactId>flyway-core</artifactId>
+			<version>${org.flywaydb.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.xerial</groupId>
+			<artifactId>sqlite-jdbc</artifactId>
+			<version>${org.sqlite.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.postgresql</groupId>
+			<artifactId>postgresql</artifactId>
+			<version>${org.postgresql.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>org.jooq</groupId>
+			<artifactId>jooq</artifactId>
+			<version>${org.jooq.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.zaxxer</groupId>
+			<artifactId>HikariCP</artifactId>
+			<version>5.0.1</version>
+			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.junit.jupiter</groupId>
+			<artifactId>junit-jupiter-api</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>testcontainers</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.testcontainers</groupId>
+			<artifactId>junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<properties>
+		<db.scenario.url>jdbc:sqlite:${project.basedir}/target/flyway/sqlite-flyway-jooq-mia-scenario.db</db.scenario.url>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+		<maven.compiler.source>17</maven.compiler.source>
+		<maven.compiler.target>17</maven.compiler.target>
+
+		<!-- maven plugin versions -->
+		<maven-compiler-plugin.version>3.10.1</maven-compiler-plugin.version>
+		<maven-jar-plugin.version>3.2.2</maven-jar-plugin.version>
+
+		<!-- dependency versions -->
+		<junit.version>5.9.0</junit.version>
+		<org.postgresql.version>42.5.0</org.postgresql.version>
+		<org.sqlite.version>3.39.3.0</org.sqlite.version>
+		<org.jooq.version>3.17.4</org.jooq.version>
+		<org.flywaydb.version>9.5.1</org.flywaydb.version>
+	</properties>
+
+</project>
